@@ -37,7 +37,24 @@
 
   main { max-width: 720px; margin: 0 auto; padding: 14px 12px; }
   .view[hidden] { display: none; }
-  h2 { margin: 4px 4px 14px; font-size: 20px; }
+  .head-row { display: flex; align-items: center; justify-content: space-between; margin: 4px 4px 14px; }
+  h2 { margin: 0; font-size: 20px; }
+  .refresh {
+    appearance: none; border: 2px solid var(--border); background: #fff; color: var(--dark);
+    font: inherit; font-size: 14px; font-weight: 700; border-radius: 8px; padding: 7px 12px; cursor: pointer;
+  }
+  .refresh:disabled { opacity: .5; cursor: default; }
+
+  /* Баннер ошибок */
+  .banner {
+    background: #fff3cd; color: #5c4400; border: 1px solid #ffe08a; border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 14px; font-size: 14px; line-height: 1.4;
+  }
+  .banner[hidden] { display: none; }
+  .banner button {
+    margin-top: 8px; appearance: none; border: 0; background: var(--dark); color: #fff;
+    font: inherit; font-weight: 700; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+  }
 
   /* Карточки */
   .grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
@@ -73,6 +90,7 @@
   .btn.call { background: var(--dark); color: #fff; flex: 1; }
   .btn.del { background: #fff; color: var(--danger); border: 2px solid var(--danger); }
   .btn.primary { background: var(--dark); color: #fff; width: 100%; padding: 14px; font-size: 16px; }
+  .btn:disabled { opacity: .6; cursor: default; }
   .btn:active { opacity: .8; }
 
   .empty {
@@ -107,10 +125,10 @@
     border: 2px solid var(--border); border-radius: 8px; padding: 11px; text-align: center;
     cursor: pointer; font-weight: 700; background: #fff;
   }
-  .seg input:checked + span { color: var(--dark); }
   .seg label:has(input:checked) { border-color: var(--dark); background: var(--accent); }
 
   .error { color: var(--danger); font-size: 13px; min-height: 16px; font-weight: 600; }
+  .note { font-size: 12px; color: var(--muted); }
 
   /* Нижняя навигация */
   nav.bottom {
@@ -145,15 +163,20 @@
 <header class="top"><span class="dot"></span> Объявления</header>
 
 <main>
+  <div id="banner" class="banner" hidden></div>
+
   <!-- ГЛАВНАЯ -->
   <section id="view-home" class="view">
-    <h2>Свежие объявления</h2>
+    <div class="head-row">
+      <h2>Свежие объявления</h2>
+      <button type="button" class="refresh" id="refreshBtn">↻ Обновить</button>
+    </div>
     <div id="feed" class="grid"></div>
   </section>
 
   <!-- ПОДАТЬ -->
   <section id="view-add" class="view" hidden>
-    <h2>Новое объявление</h2>
+    <div class="head-row"><h2>Новое объявление</h2></div>
     <form id="adForm" novalidate>
       <div>
         <label>Фотография</label>
@@ -192,14 +215,15 @@
         <input type="tel" id="phone" maxlength="25" inputmode="tel" placeholder="+7 700 000 00 00" required>
       </label>
 
+      <div class="note">Объявление и номер телефона будут видны всем посетителям сайта.</div>
       <div class="error" id="formError"></div>
-      <button type="submit" class="btn primary">Опубликовать</button>
+      <button type="submit" class="btn primary" id="submitBtn">Опубликовать</button>
     </form>
   </section>
 
   <!-- ПОИСК -->
   <section id="view-search" class="view" hidden>
-    <h2>Поиск</h2>
+    <div class="head-row"><h2>Поиск</h2></div>
     <label style="margin-bottom:14px">
       <input type="search" id="searchInput" placeholder="Название или описание…" autocomplete="off">
     </label>
@@ -224,40 +248,36 @@
 
 <div id="toast" role="status"></div>
 
+<!-- Клиент Supabase (единственная внешняя библиотека) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <script>
 (function () {
   'use strict';
 
-  var ADS_KEY = 'olx_ads_v1';
-  var USER_KEY = 'olx_user_id_v1';
-  var CURRENCY = '₸'; // при необходимости замените на ₽, $, € и т.д.
+  /* ================== НАСТРОЙКИ ==================
+     Вставьте сюда значения из Supabase:
+     Project URL и Publishable key (sb_publishable_...)
+     Эти значения публичные — их безопасно хранить в коде.
+     НИКОГДА не вставляйте сюда secret key (sb_secret_...) или service_role. */
+  var SUPABASE_URL = 'https://meskuwaxkvhngzbmwpki.supabase.co';
+  var SUPABASE_KEY = 'sb_publishable_W88JQJVT6a7LQowoLJ5-Kw_G-yyWWHn';
 
-  /* ---------- Пользователь (ID сессии) ---------- */
-  function genId() {
-    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
-    return 'u-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
-  }
-  function getUserId() {
-    try {
-      var id = localStorage.getItem(USER_KEY);
-      if (!id) { id = genId(); localStorage.setItem(USER_KEY, id); }
-      return id;
-    } catch (e) { return 'tmp-' + genId(); }
-  }
-  var USER_ID = getUserId();
+  var BUCKET = 'ad-photos';   // название хранилища для фото (создаётся в setup.sql)
+  var CURRENCY = '₸';         // валюта: ₸, ₽, $, € ...
+  /* ============================================== */
 
-  /* ---------- Хранилище ---------- */
-  function loadAds() {
-    try {
-      var data = JSON.parse(localStorage.getItem(ADS_KEY) || '[]');
-      return Array.isArray(data) ? data : [];
-    } catch (e) { return []; }
+  var configured = /^https:\/\/[a-z0-9-]+\.supabase\.(co|in)/i.test(SUPABASE_URL) &&
+                   SUPABASE_KEY.indexOf('PASTE') === -1;
+  var sb = null;
+  if (configured && window.supabase && window.supabase.createClient) {
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   }
-  function saveAds(list) {
-    try { localStorage.setItem(ADS_KEY, JSON.stringify(list)); return true; }
-    catch (e) { return false; }
-  }
-  var ads = loadAds();
+
+  var ads = [];
+  var userId = null;      // ID текущего анонимного пользователя (если уже есть сессия)
+  var loadError = false;
+  var loading = false;
 
   /* ---------- Утилиты ---------- */
   function $(id) { return document.getElementById(id); }
@@ -267,11 +287,15 @@
     if (text != null) n.textContent = text;
     return n;
   }
-  function formatPrice(n) {
-    return Number(n).toLocaleString('ru-RU') + ' ' + CURRENCY;
+  function genId() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
   }
-  function formatDate(ts) {
-    return new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+  function formatPrice(n) { return Number(n).toLocaleString('ru-RU') + ' ' + CURRENCY; }
+  function formatDate(iso) {
+    var d = new Date(iso);
+    if (isNaN(d)) return '';
+    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
   }
   var toastTimer;
   function toast(msg) {
@@ -279,15 +303,30 @@
     t.textContent = msg;
     t.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2600);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 3000);
   }
 
-  /* ---------- Карточка объявления ---------- */
+  /* ---------- Баннер ---------- */
+  function showBanner(text, withRetry) {
+    var b = $('banner');
+    b.textContent = '';
+    b.appendChild(el('div', null, text));
+    if (withRetry) {
+      var btn = el('button', null, 'Повторить');
+      btn.type = 'button';
+      btn.addEventListener('click', function () { loadAds(); });
+      b.appendChild(btn);
+    }
+    b.hidden = false;
+  }
+  function hideBanner() { $('banner').hidden = true; }
+
+  /* ---------- Карточка ---------- */
   function buildCard(ad) {
     var card = el('article', 'card');
 
     var img = el('img', 'photo');
-    img.src = ad.photo;
+    if (/^https:\/\//i.test(ad.photo_url)) img.src = ad.photo_url;
     img.alt = ad.title;
     img.loading = 'lazy';
     card.appendChild(img);
@@ -302,7 +341,7 @@
     body.appendChild(el('h3', 'title', ad.title));
     body.appendChild(el('p', 'desc', ad.description));
     body.appendChild(el('div', 'meta', '📍 ' + ad.address));
-    body.appendChild(el('div', 'meta', formatDate(ad.createdAt)));
+    body.appendChild(el('div', 'meta', formatDate(ad.created_at)));
 
     var actions = el('div', 'actions');
     var call = el('a', 'btn call', '📞 ' + ad.phone);
@@ -310,13 +349,13 @@
     call.addEventListener('click', function (e) { e.stopPropagation(); });
     actions.appendChild(call);
 
-    // Кнопка «Удалить» — только автору
-    if (ad.authorId === USER_ID) {
+    // «Удалить» видна только автору (сервер дополнительно проверяет это сам)
+    if (userId && ad.author_id === userId) {
       var del = el('button', 'btn del', 'Удалить');
       del.type = 'button';
       del.addEventListener('click', function (e) {
         e.stopPropagation();
-        deleteAd(ad.id);
+        deleteAd(ad);
       });
       actions.appendChild(del);
     }
@@ -327,13 +366,13 @@
     return card;
   }
 
-  function renderList(container, list, emptyIcon, emptyText) {
+  function renderList(container, list, icon, text) {
     container.textContent = '';
     if (!list.length) {
       var e = el('div', 'empty');
       e.style.gridColumn = '1 / -1';
-      e.appendChild(el('div', 'big', emptyIcon));
-      e.appendChild(el('div', null, emptyText));
+      e.appendChild(el('div', 'big', icon));
+      e.appendChild(el('div', null, text));
       container.appendChild(e);
       return;
     }
@@ -343,57 +382,96 @@
   }
 
   function renderFeed() {
-    renderList($('feed'), ads, '🛍️', 'Пока нет объявлений. Станьте первым — нажмите «Подать».');
+    if (loading && !ads.length) {
+      renderList($('feed'), [], '⏳', 'Загружаем объявления…');
+    } else if (loadError && !ads.length) {
+      renderList($('feed'), [], '📡', 'Не удалось загрузить объявления');
+    } else {
+      renderList($('feed'), ads, '🛍️', 'Пока нет объявлений. Станьте первым — нажмите «Подать».');
+    }
   }
 
   function renderSearch() {
     var q = $('searchInput').value.trim().toLowerCase();
     var box = $('searchResults');
-    if (!q) {
-      box.textContent = '';
-      var e = el('div', 'empty');
-      e.style.gridColumn = '1 / -1';
-      e.appendChild(el('div', 'big', '🔎'));
-      e.appendChild(el('div', null, 'Начните вводить название или описание'));
-      box.appendChild(e);
-      return;
-    }
+    if (!q) { renderList(box, [], '🔎', 'Начните вводить название или описание'); return; }
     var found = ads.filter(function (a) {
-      return a.title.toLowerCase().indexOf(q) !== -1 || a.description.toLowerCase().indexOf(q) !== -1;
+      return String(a.title).toLowerCase().indexOf(q) !== -1 ||
+             String(a.description).toLowerCase().indexOf(q) !== -1;
     });
     renderList(box, found, '😕', 'Ничего не найдено');
   }
 
   function renderAll() { renderFeed(); renderSearch(); }
 
-  /* ---------- Удаление (только свои) ---------- */
-  function deleteAd(id) {
-    var ad = ads.filter(function (a) { return a.id === id; })[0];
-    if (!ad || ad.authorId !== USER_ID) { toast('Нельзя удалить чужое объявление'); return; }
-    if (!confirm('Удалить объявление «' + ad.title + '»?')) return;
-    ads = ads.filter(function (a) { return a.id !== id; });
-    saveAds(ads);
+  /* ---------- Загрузка объявлений ---------- */
+  async function loadAds() {
+    if (!sb) return;
+    loading = true;
+    $('refreshBtn').disabled = true;
+    renderFeed();
+    try {
+      var res = await sb.from('ads')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (res.error) throw res.error;
+      ads = res.data || [];
+      loadError = false;
+      hideBanner();
+    } catch (err) {
+      console.error(err);
+      loadError = true;
+      showBanner('Не удалось загрузить объявления. Возможно, сервер временно недоступен или проверьте интернет-соединение.', true);
+    }
+    loading = false;
+    $('refreshBtn').disabled = false;
     renderAll();
-    toast('Объявление удалено');
+  }
+
+  /* ---------- Анонимный пользователь ---------- */
+  async function ensureUser() {
+    if (userId) return userId;
+    var res = await sb.auth.signInAnonymously();
+    if (res.error) throw res.error;
+    userId = res.data.user.id;
+    return userId;
+  }
+
+  /* ---------- Удаление ---------- */
+  async function deleteAd(ad) {
+    if (!confirm('Удалить объявление «' + ad.title + '»?')) return;
+    try {
+      var res = await sb.from('ads').delete().eq('id', ad.id).select();
+      if (res.error) throw res.error;
+      if (!res.data || !res.data.length) { toast('Нельзя удалить чужое объявление'); return; }
+      if (ad.photo_path) await sb.storage.from(BUCKET).remove([ad.photo_path]);
+      ads = ads.filter(function (a) { return a.id !== ad.id; });
+      renderAll();
+      toast('Объявление удалено');
+    } catch (err) {
+      console.error(err);
+      toast('Не удалось удалить: ' + (err.message || 'ошибка'));
+    }
   }
 
   /* ---------- Навигация ---------- */
   function showTab(name) {
-    ['home', 'add', 'search'].forEach(function (t) {
-      $('view-' + t).hidden = (t !== name);
-    });
+    ['home', 'add', 'search'].forEach(function (t) { $('view-' + t).hidden = (t !== name); });
     document.querySelectorAll('nav.bottom button').forEach(function (b) {
       b.classList.toggle('active', b.getAttribute('data-tab') === name);
     });
     window.scrollTo(0, 0);
     if (name === 'search') { renderSearch(); $('searchInput').focus({ preventScroll: true }); }
+    if (name === 'home' && sb) loadAds();
   }
   document.querySelectorAll('nav.bottom button').forEach(function (b) {
     b.addEventListener('click', function () { showTab(b.getAttribute('data-tab')); });
   });
+  $('refreshBtn').addEventListener('click', loadAds);
 
-  /* ---------- Фото: FileReader → Data URL (со сжатием) ---------- */
-  var photoData = '';
+  /* ---------- Фото: FileReader → Data URL → сжатие → Blob ---------- */
+  var photoBlob = null;
 
   function readPhoto(file) {
     return new Promise(function (resolve, reject) {
@@ -403,8 +481,7 @@
         var img = new Image();
         img.onerror = function () { reject(new Error('Файл не является изображением')); };
         img.onload = function () {
-          // Уменьшаем фото, чтобы не переполнить localStorage (лимит ~5 МБ)
-          var MAX = 900;
+          var MAX = 1000;
           var w = img.width, h = img.height;
           if (w > MAX || h > MAX) {
             var k = MAX / Math.max(w, h);
@@ -416,7 +493,10 @@
           ctx.fillStyle = '#fff';
           ctx.fillRect(0, 0, w, h);
           ctx.drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL('image/jpeg', 0.75));
+          canvas.toBlob(function (blob) {
+            if (!blob) { reject(new Error('Не удалось обработать фото')); return; }
+            resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.8), blob: blob });
+          }, 'image/jpeg', 0.8);
         };
         img.src = reader.result;
       };
@@ -427,28 +507,39 @@
   $('photo').addEventListener('change', function () {
     var file = this.files && this.files[0];
     var box = $('upload');
-    if (!file) { photoData = ''; box.classList.remove('has'); return; }
+    if (!file) { photoBlob = null; box.classList.remove('has'); return; }
     if (file.type.indexOf('image/') !== 0) {
       $('formError').textContent = 'Выберите файл изображения';
       this.value = ''; return;
     }
-    readPhoto(file).then(function (data) {
-      photoData = data;
-      $('preview').src = data;
+    readPhoto(file).then(function (r) {
+      photoBlob = r.blob;
+      $('preview').src = r.dataUrl;
       box.classList.add('has');
       $('formError').textContent = '';
     }).catch(function (err) {
-      photoData = '';
+      photoBlob = null;
       box.classList.remove('has');
       $('formError').textContent = err.message;
     });
   });
 
   /* ---------- Отправка формы ---------- */
-  $('adForm').addEventListener('submit', function (e) {
+  function friendlyError(err) {
+    var m = (err && err.message) || '';
+    if (/anonymous sign-ins are disabled/i.test(m)) {
+      return 'В Supabase выключен анонимный вход. Включите «Allow anonymous sign-ins» (см. инструкцию).';
+    }
+    if (/rate limit/i.test(m)) return 'Слишком много попыток. Подождите немного и повторите.';
+    return m || 'Неизвестная ошибка';
+  }
+
+  $('adForm').addEventListener('submit', async function (e) {
     e.preventDefault();
     var err = $('formError');
     err.textContent = '';
+
+    if (!sb) { err.textContent = 'Приложение не настроено: нет подключения к Supabase.'; return; }
 
     var title = $('title').value.trim();
     var description = $('description').value.trim();
@@ -457,7 +548,7 @@
     var address = $('address').value.trim();
     var phone = $('phone').value.trim();
 
-    if (!photoData) { err.textContent = 'Добавьте фотографию товара'; return; }
+    if (!photoBlob) { err.textContent = 'Добавьте фотографию товара'; return; }
     if (!title) { err.textContent = 'Укажите название'; return; }
     if (!description) { err.textContent = 'Добавьте описание'; return; }
     if (priceRaw === '' || isNaN(Number(priceRaw)) || Number(priceRaw) < 0) { err.textContent = 'Укажите корректную цену'; return; }
@@ -466,46 +557,84 @@
       err.textContent = 'Введите корректный номер телефона'; return;
     }
 
-    var ad = {
-      id: genId(),
-      authorId: USER_ID,
-      photo: photoData,
-      title: title,
-      description: description,
-      deal: deal,
-      price: Number(priceRaw),
-      address: address,
-      phone: phone,
-      createdAt: Date.now()
-    };
+    var btn = $('submitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Публикуем…';
+    var uploadedPath = null;
 
-    var next = [ad].concat(ads); // новое — в начало ленты
-    if (!saveAds(next)) {
-      err.textContent = 'Не удалось сохранить: память браузера заполнена. Удалите старые объявления или выберите фото поменьше.';
-      return;
+    try {
+      var uid = await ensureUser();
+
+      // 1) загружаем фото в хранилище: ad-photos/<id пользователя>/<случайное имя>.jpg
+      var path = uid + '/' + genId() + '.jpg';
+      var up = await sb.storage.from(BUCKET).upload(path, photoBlob, {
+        contentType: 'image/jpeg', cacheControl: '31536000', upsert: false
+      });
+      if (up.error) throw up.error;
+      uploadedPath = path;
+      var photoUrl = sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+
+      // 2) записываем объявление в базу (author_id подставляет сервер)
+      var ins = await sb.from('ads').insert({
+        title: title,
+        description: description,
+        deal: deal,
+        price: Number(priceRaw),
+        address: address,
+        phone: phone,
+        photo_url: photoUrl,
+        photo_path: path
+      }).select().single();
+      if (ins.error) throw ins.error;
+
+      ads.unshift(ins.data); // новое объявление — в начало ленты
+      $('adForm').reset();
+      photoBlob = null;
+      $('upload').classList.remove('has');
+      $('preview').removeAttribute('src');
+      renderAll();
+      showTab('home');
+      toast('Объявление опубликовано');
+    } catch (ex) {
+      console.error(ex);
+      // если фото уже загрузилось, а запись не создалась — убираем «осиротевший» файл
+      if (uploadedPath) { try { await sb.storage.from(BUCKET).remove([uploadedPath]); } catch (_) {} }
+      err.textContent = 'Не удалось опубликовать: ' + friendlyError(ex);
     }
-    ads = next;
 
-    this.reset();
-    photoData = '';
-    $('upload').classList.remove('has');
-    $('preview').removeAttribute('src');
-
-    renderAll();
-    showTab('home');
-    toast('Объявление опубликовано');
+    btn.disabled = false;
+    btn.textContent = 'Опубликовать';
   });
 
   /* ---------- Поиск в реальном времени ---------- */
   $('searchInput').addEventListener('input', renderSearch);
 
-  /* ---------- Синхронизация между вкладками браузера ---------- */
-  window.addEventListener('storage', function (e) {
-    if (e.key === ADS_KEY) { ads = loadAds(); renderAll(); }
-  });
-
   /* ---------- Старт ---------- */
-  renderAll();
+  async function init() {
+    if (!configured) {
+      showBanner('Приложение ещё не подключено к Supabase: вставьте Project URL и Publishable key в начало скрипта в index.html.', false);
+      renderAll();
+      return;
+    }
+    if (!sb) {
+      showBanner('Не удалось загрузить библиотеку Supabase. Проверьте интернет-соединение и обновите страницу.', false);
+      renderAll();
+      return;
+    }
+    try {
+      var s = await sb.auth.getSession();
+      if (s.data && s.data.session) userId = s.data.session.user.id;
+    } catch (ex) { console.error(ex); }
+
+    sb.auth.onAuthStateChange(function (_event, session) {
+      userId = session ? session.user.id : null;
+      renderAll();
+    });
+
+    renderAll();
+    loadAds();
+  }
+  init();
 })();
 </script>
 </body>

@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#002f34">
+<title>Объявления</title>
+<style>
+  :root {
+    --dark: #002f34;
+    --accent: #23e5db;
+    --bg: #f2f4f5;
+    --card: #ffffff;
+    --text: #002f34;
+    --muted: #6b7f82;
+    --border: #d9e0e1;
+    --danger: #d6293e;
+    --nav-h: 62px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 16px);
+  }
+
+  header.top {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--dark); color: #fff;
+    padding: 14px 16px;
+    font-size: 20px; font-weight: 700; letter-spacing: .3px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  header.top .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+
+  main { max-width: 720px; margin: 0 auto; padding: 14px 12px; }
+  .view[hidden] { display: none; }
+  h2 { margin: 4px 4px 14px; font-size: 20px; }
+
+  /* Карточки */
+  .grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  @media (min-width: 560px) { .grid { grid-template-columns: 1fr 1fr; } }
+
+  .card {
+    background: var(--card); border-radius: 10px; overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,47,52,.12);
+    display: flex; flex-direction: column;
+  }
+  .card .photo { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #e4e9ea; display: block; }
+  .card .body { padding: 12px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+  .card .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .card .title { font-size: 16px; font-weight: 600; margin: 0; word-break: break-word; }
+  .card .price { font-size: 18px; font-weight: 800; }
+  .badge {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+    padding: 3px 8px; border-radius: 20px; white-space: nowrap;
+  }
+  .badge.sale { background: var(--accent); color: var(--dark); }
+  .badge.rent { background: #ffce32; color: #3a2d00; }
+  .card .desc {
+    font-size: 14px; color: #3b5558; margin: 0; word-break: break-word; white-space: pre-wrap;
+    display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .card.open .desc { display: block; -webkit-line-clamp: unset; line-clamp: unset; }
+  .card .meta { font-size: 13px; color: var(--muted); }
+  .card .actions { display: flex; gap: 8px; margin-top: 6px; }
+  .btn {
+    appearance: none; border: 0; cursor: pointer; font: inherit; font-weight: 700;
+    padding: 11px 14px; border-radius: 8px; text-decoration: none; text-align: center;
+  }
+  .btn.call { background: var(--dark); color: #fff; flex: 1; }
+  .btn.del { background: #fff; color: var(--danger); border: 2px solid var(--danger); }
+  .btn.primary { background: var(--dark); color: #fff; width: 100%; padding: 14px; font-size: 16px; }
+  .btn:active { opacity: .8; }
+
+  .empty {
+    text-align: center; color: var(--muted); padding: 48px 16px;
+    background: var(--card); border-radius: 10px;
+  }
+  .empty .big { font-size: 40px; margin-bottom: 8px; }
+
+  /* Форма */
+  form { background: var(--card); border-radius: 10px; padding: 16px; display: grid; gap: 14px; box-shadow: 0 1px 3px rgba(0,47,52,.12); }
+  label { display: grid; gap: 6px; font-size: 14px; font-weight: 600; }
+  input[type=text], input[type=number], input[type=tel], input[type=search], textarea, select {
+    font: inherit; font-weight: 400; color: var(--text);
+    width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 8px; background: #fff;
+    outline: none;
+  }
+  input:focus, textarea:focus, select:focus { border-color: var(--dark); }
+  textarea { min-height: 110px; resize: vertical; }
+
+  .upload {
+    border: 2px dashed var(--border); border-radius: 10px; padding: 14px; text-align: center;
+    color: var(--muted); cursor: pointer; position: relative; overflow: hidden;
+  }
+  .upload input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .upload img { max-width: 100%; max-height: 220px; border-radius: 8px; display: none; margin: 0 auto; }
+  .upload.has img { display: block; }
+  .upload.has .hint { display: none; }
+
+  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label {
+    border: 2px solid var(--border); border-radius: 8px; padding: 11px; text-align: center;
+    cursor: pointer; font-weight: 700; background: #fff;
+  }
+  .seg input:checked + span { color: var(--dark); }
+  .seg label:has(input:checked) { border-color: var(--dark); background: var(--accent); }
+
+  .error { color: var(--danger); font-size: 13px; min-height: 16px; font-weight: 600; }
+
+  /* Нижняя навигация */
+  nav.bottom {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    height: calc(var(--nav-h) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    background: #fff; border-top: 1px solid var(--border);
+    display: grid; grid-template-columns: repeat(3, 1fr);
+  }
+  nav.bottom button {
+    appearance: none; border: 0; background: none; font: inherit; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    color: var(--muted); font-size: 12px; font-weight: 600;
+  }
+  nav.bottom button svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  nav.bottom button.active { color: var(--dark); }
+  nav.bottom button.active svg { stroke: var(--dark); }
+  nav.bottom button.active span { border-bottom: 3px solid var(--accent); padding-bottom: 1px; }
+
+  /* Всплывающее уведомление */
+  #toast {
+    position: fixed; left: 50%; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 14px);
+    transform: translateX(-50%) translateY(20px); opacity: 0; pointer-events: none;
+    background: var(--dark); color: #fff; padding: 11px 18px; border-radius: 24px;
+    font-size: 14px; font-weight: 600; transition: .25s; z-index: 30; max-width: 90%; text-align: center;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header class="top"><span class="dot"></span> Объявления</header>
+
+<main>
+  <!-- ГЛАВНАЯ -->
+  <section id="view-home" class="view">
+    <h2>Свежие объявления</h2>
+    <div id="feed" class="grid"></div>
+  </section>
+
+  <!-- ПОДАТЬ -->
+  <section id="view-add" class="view" hidden>
+    <h2>Новое объявление</h2>
+    <form id="adForm" novalidate>
+      <div>
+        <label>Фотография</label>
+        <div class="upload" id="upload">
+          <div class="hint">📷 Нажмите, чтобы выбрать фото</div>
+          <img id="preview" alt="Предпросмотр">
+          <input type="file" id="photo" accept="image/*">
+        </div>
+      </div>
+
+      <label>Название
+        <input type="text" id="title" maxlength="80" placeholder="Например, Велосипед горный" required>
+      </label>
+
+      <label>Описание
+        <textarea id="description" maxlength="1500" placeholder="Расскажите о товаре подробнее" required></textarea>
+      </label>
+
+      <div>
+        <label style="margin-bottom:6px">Тип сделки</label>
+        <div class="seg">
+          <label><input type="radio" name="deal" value="sale" checked><span>Продажа</span></label>
+          <label><input type="radio" name="deal" value="rent"><span>Аренда</span></label>
+        </div>
+      </div>
+
+      <label>Цена
+        <input type="number" id="price" min="0" step="1" inputmode="numeric" placeholder="0" required>
+      </label>
+
+      <label>Адрес (город / район)
+        <input type="text" id="address" maxlength="100" placeholder="Например, Астана, Есиль" required>
+      </label>
+
+      <label>Номер телефона
+        <input type="tel" id="phone" maxlength="25" inputmode="tel" placeholder="+7 700 000 00 00" required>
+      </label>
+
+      <div class="error" id="formError"></div>
+      <button type="submit" class="btn primary">Опубликовать</button>
+    </form>
+  </section>
+
+  <!-- ПОИСК -->
+  <section id="view-search" class="view" hidden>
+    <h2>Поиск</h2>
+    <label style="margin-bottom:14px">
+      <input type="search" id="searchInput" placeholder="Название или описание…" autocomplete="off">
+    </label>
+    <div id="searchResults" class="grid"></div>
+  </section>
+</main>
+
+<nav class="bottom" aria-label="Навигация">
+  <button data-tab="home" class="active">
+    <svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
+    <span>Главная</span>
+  </button>
+  <button data-tab="add">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+    <span>Подать</span>
+  </button>
+  <button data-tab="search">
+    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.5-4.5"/></svg>
+    <span>Поиск</span>
+  </button>
+</nav>
+
+<div id="toast" role="status"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var ADS_KEY = 'olx_ads_v1';
+  var USER_KEY = 'olx_user_id_v1';
+  var CURRENCY = '₸'; // при необходимости замените на ₽, $, € и т.д.
+
+  /* ---------- Пользователь (ID сессии) ---------- */
+  function genId() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'u-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
+  }
+  function getUserId() {
+    try {
+      var id = localStorage.getItem(USER_KEY);
+      if (!id) { id = genId(); localStorage.setItem(USER_KEY, id); }
+      return id;
+    } catch (e) { return 'tmp-' + genId(); }
+  }
+  var USER_ID = getUserId();
+
+  /* ---------- Хранилище ---------- */
+  function loadAds() {
+    try {
+      var data = JSON.parse(localStorage.getItem(ADS_KEY) || '[]');
+      return Array.isArray(data) ? data : [];
+    } catch (e) { return []; }
+  }
+  function saveAds(list) {
+    try { localStorage.setItem(ADS_KEY, JSON.stringify(list)); return true; }
+    catch (e) { return false; }
+  }
+  var ads = loadAds();
+
+  /* ---------- Утилиты ---------- */
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function formatPrice(n) {
+    return Number(n).toLocaleString('ru-RU') + ' ' + CURRENCY;
+  }
+  function formatDate(ts) {
+    return new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+  }
+  var toastTimer;
+  function toast(msg) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2600);
+  }
+
+  /* ---------- Карточка объявления ---------- */
+  function buildCard(ad) {
+    var card = el('article', 'card');
+
+    var img = el('img', 'photo');
+    img.src = ad.photo;
+    img.alt = ad.title;
+    img.loading = 'lazy';
+    card.appendChild(img);
+
+    var body = el('div', 'body');
+
+    var top = el('div', 'row');
+    top.appendChild(el('div', 'price', formatPrice(ad.price)));
+    top.appendChild(el('span', 'badge ' + (ad.deal === 'rent' ? 'rent' : 'sale'), ad.deal === 'rent' ? 'Аренда' : 'Продажа'));
+    body.appendChild(top);
+
+    body.appendChild(el('h3', 'title', ad.title));
+    body.appendChild(el('p', 'desc', ad.description));
+    body.appendChild(el('div', 'meta', '📍 ' + ad.address));
+    body.appendChild(el('div', 'meta', formatDate(ad.createdAt)));
+
+    var actions = el('div', 'actions');
+    var call = el('a', 'btn call', '📞 ' + ad.phone);
+    call.href = 'tel:' + String(ad.phone).replace(/[^\d+]/g, '');
+    call.addEventListener('click', function (e) { e.stopPropagation(); });
+    actions.appendChild(call);
+
+    // Кнопка «Удалить» — только автору
+    if (ad.authorId === USER_ID) {
+      var del = el('button', 'btn del', 'Удалить');
+      del.type = 'button';
+      del.addEventListener('click', function (e) {
+        e.stopPropagation();
+        deleteAd(ad.id);
+      });
+      actions.appendChild(del);
+    }
+    body.appendChild(actions);
+    card.appendChild(body);
+
+    card.addEventListener('click', function () { card.classList.toggle('open'); });
+    return card;
+  }
+
+  function renderList(container, list, emptyIcon, emptyText) {
+    container.textContent = '';
+    if (!list.length) {
+      var e = el('div', 'empty');
+      e.style.gridColumn = '1 / -1';
+      e.appendChild(el('div', 'big', emptyIcon));
+      e.appendChild(el('div', null, emptyText));
+      container.appendChild(e);
+      return;
+    }
+    var frag = document.createDocumentFragment();
+    list.forEach(function (ad) { frag.appendChild(buildCard(ad)); });
+    container.appendChild(frag);
+  }
+
+  function renderFeed() {
+    renderList($('feed'), ads, '🛍️', 'Пока нет объявлений. Станьте первым — нажмите «Подать».');
+  }
+
+  function renderSearch() {
+    var q = $('searchInput').value.trim().toLowerCase();
+    var box = $('searchResults');
+    if (!q) {
+      box.textContent = '';
+      var e = el('div', 'empty');
+      e.style.gridColumn = '1 / -1';
+      e.appendChild(el('div', 'big', '🔎'));
+      e.appendChild(el('div', null, 'Начните вводить название или описание'));
+      box.appendChild(e);
+      return;
+    }
+    var found = ads.filter(function (a) {
+      return a.title.toLowerCase().indexOf(q) !== -1 || a.description.toLowerCase().indexOf(q) !== -1;
+    });
+    renderList(box, found, '😕', 'Ничего не найдено');
+  }
+
+  function renderAll() { renderFeed(); renderSearch(); }
+
+  /* ---------- Удаление (только свои) ---------- */
+  function deleteAd(id) {
+    var ad = ads.filter(function (a) { return a.id === id; })[0];
+    if (!ad || ad.authorId !== USER_ID) { toast('Нельзя удалить чужое объявление'); return; }
+    if (!confirm('Удалить объявление «' + ad.title + '»?')) return;
+    ads = ads.filter(function (a) { return a.id !== id; });
+    saveAds(ads);
+    renderAll();
+    toast('Объявление удалено');
+  }
+
+  /* ---------- Навигация ---------- */
+  function showTab(name) {
+    ['home', 'add', 'search'].forEach(function (t) {
+      $('view-' + t).hidden = (t !== name);
+    });
+    document.querySelectorAll('nav.bottom button').forEach(function (b) {
+      b.classList.toggle('active', b.getAttribute('data-tab') === name);
+    });
+    window.scrollTo(0, 0);
+    if (name === 'search') { renderSearch(); $('searchInput').focus({ preventScroll: true }); }
+  }
+  document.querySelectorAll('nav.bottom button').forEach(function (b) {
+    b.addEventListener('click', function () { showTab(b.getAttribute('data-tab')); });
+  });
+
+  /* ---------- Фото: FileReader → Data URL (со сжатием) ---------- */
+  var photoData = '';
+
+  function readPhoto(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onerror = function () { reject(new Error('Не удалось прочитать файл')); };
+      reader.onload = function () {
+        var img = new Image();
+        img.onerror = function () { reject(new Error('Файл не является изображением')); };
+        img.onload = function () {
+          // Уменьшаем фото, чтобы не переполнить localStorage (лимит ~5 МБ)
+          var MAX = 900;
+          var w = img.width, h = img.height;
+          if (w > MAX || h > MAX) {
+            var k = MAX / Math.max(w, h);
+            w = Math.round(w * k); h = Math.round(h * k);
+          }
+          var canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          var ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.75));
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  $('photo').addEventListener('change', function () {
+    var file = this.files && this.files[0];
+    var box = $('upload');
+    if (!file) { photoData = ''; box.classList.remove('has'); return; }
+    if (file.type.indexOf('image/') !== 0) {
+      $('formError').textContent = 'Выберите файл изображения';
+      this.value = ''; return;
+    }
+    readPhoto(file).then(function (data) {
+      photoData = data;
+      $('preview').src = data;
+      box.classList.add('has');
+      $('formError').textContent = '';
+    }).catch(function (err) {
+      photoData = '';
+      box.classList.remove('has');
+      $('formError').textContent = err.message;
+    });
+  });
+
+  /* ---------- Отправка формы ---------- */
+  $('adForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var err = $('formError');
+    err.textContent = '';
+
+    var title = $('title').value.trim();
+    var description = $('description').value.trim();
+    var deal = document.querySelector('input[name="deal"]:checked').value;
+    var priceRaw = $('price').value;
+    var address = $('address').value.trim();
+    var phone = $('phone').value.trim();
+
+    if (!photoData) { err.textContent = 'Добавьте фотографию товара'; return; }
+    if (!title) { err.textContent = 'Укажите название'; return; }
+    if (!description) { err.textContent = 'Добавьте описание'; return; }
+    if (priceRaw === '' || isNaN(Number(priceRaw)) || Number(priceRaw) < 0) { err.textContent = 'Укажите корректную цену'; return; }
+    if (!address) { err.textContent = 'Укажите город / район'; return; }
+    if (!/^\+?[\d\s\-()]{6,}$/.test(phone) || phone.replace(/\D/g, '').length < 6) {
+      err.textContent = 'Введите корректный номер телефона'; return;
+    }
+
+    var ad = {
+      id: genId(),
+      authorId: USER_ID,
+      photo: photoData,
+      title: title,
+      description: description,
+      deal: deal,
+      price: Number(priceRaw),
+      address: address,
+      phone: phone,
+      createdAt: Date.now()
+    };
+
+    var next = [ad].concat(ads); // новое — в начало ленты
+    if (!saveAds(next)) {
+      err.textContent = 'Не удалось сохранить: память браузера заполнена. Удалите старые объявления или выберите фото поменьше.';
+      return;
+    }
+    ads = next;
+
+    this.reset();
+    photoData = '';
+    $('upload').classList.remove('has');
+    $('preview').removeAttribute('src');
+
+    renderAll();
+    showTab('home');
+    toast('Объявление опубликовано');
+  });
+
+  /* ---------- Поиск в реальном времени ---------- */
+  $('searchInput').addEventListener('input', renderSearch);
+
+  /* ---------- Синхронизация между вкладками браузера ---------- */
+  window.addEventListener('storage', function (e) {
+    if (e.key === ADS_KEY) { ads = loadAds(); renderAll(); }
+  });
+
+  /* ---------- Старт ---------- */
+  renderAll();
+})();
+</script>
+</body>
+</html>

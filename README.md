@@ -1,4 +1,4 @@
-# Ads Board — OLX-style classifieds web app
+# den — OLX-style classifieds web app
 
 A mobile-first classifieds app (sell / rent) built with plain HTML, CSS and JavaScript in a single `index.html`, backed by [Supabase](https://supabase.com) (Postgres + Storage + Auth). Hosted on GitHub Pages.
 
